@@ -1,0 +1,624 @@
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ; =============================================================================
+                      00002 ; Vídeo Aula de Engenharia Eletrônica, a Clássica de Sexta WR Kits
+                      00003 ;
+                      00004 ;
+                      00005 ; LCD Hitachi no modo 4 bits com PIC e Assembly
+                      00006 ;
+                      00007 ; MPLAB IDE v8.92
+                      00008 ; Compiler: MPASM v5.51
+                      00009 ; 
+                      00010 ; MCU: PIC16F628A
+                      00011 ; Clock: 4MHz    Ciclo de máquina = 1µs
+                      00012 ;
+                      00013 ; Autor: Eng. Wagner Rambo   Data: Março de 2021
+                      00014 ;
+                      00015 ; =============================================================================
+                      00016 
+                      00017 
+                      00018 ; =============================================================================
+                      00019 ; --- Listagem do Processador Utilizado ---
+                      00020         list    p=16F628A                                               ;Utilizado PIC16F628A
+                      00021         
+                      00022 
+                      00023 ; =============================================================================
+                      00024 ; --- Arquivos Inclusos no Projeto ---
+                      00025         #include <p16F628a.inc>                                 ;inclui o arquivo do PIC 16F628A
+                      00001         LIST
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ;  MPASM PIC16F628A processor include
+                      00005 ; 
+                      00006 ;  (c) Copyright 1999-2013 Microchip Technology, All rights reserved
+                      00007 ;==========================================================================
+                      00008 
+                      00385         LIST
+                      00026         
+                      00027 
+                      00028 ; =============================================================================
+                      00029 ; --- FUSE Bits ---
+                      00030 ; - Oscilador interno 4MHz
+                      00031 ; - Watch Dog Timer desabilitado
+                      00032 ; - Power Up Timer habilitado
+                      00033 ; - Brown Out desabilitado
+                      00034 ; - Sem programação em baixa tensão, sem proteção de código, sem proteção da memória EEPROM
+                      00035 ; - Master Clear habilitado
+2007   3F30           00036         __config _INTRC_OSC_NOCLKOUT & _WDT_OFF & _PWRTE_ON & _BOREN_OFF & _LVP_OFF & _CP_OFF & _CPD_OFF
+                             & _MCLRE_ON
+                      00037 
+                      00038 
+                      00039 ; =============================================================================
+                      00040 ; --- Paginação de Memória ---
+                      00041         #define         bank0   bcf     STATUS,RP0              ;Cria um mnemônico para selecionar o ban
+                            co 0 de memória
+                      00042         #define         bank1   bsf     STATUS,RP0              ;Cria um mnemônico para selecionar o ban
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                            co 1 de memória
+                      00043         
+                      00044 
+                      00045 ; =============================================================================
+                      00046 ; --- Mapeamento de Hardware ---
+                      00047         #define         rsel    PORTB,0                         ;pino de register select do LCD
+                      00048         #define     enable      PORTB,1                         ;pino de enable do LCD
+                      00049         
+                      00050         
+                      00051 ; =============================================================================
+                      00052 ; --- Registradores de Uso Geral ---
+                      00053         cblock          H'20'                                           ;início da memória do usuário no
+                             PIC16F628A
+                      00054         
+  00000020            00055         cmd_st                                                                  ;armazena comando
+  00000021            00056         char_st                                                                 ;armazena caractere
+  00000022            00057         time1                                                                   ;auxiliar para temporiza
+                            ção
+  00000023            00058         time2                                                                   ;auxiliar para temporiza
+                            ção
+  00000024            00059         time3                                                                   ;auxiliar para temporiza
+                            ção
+                      00060         
+                      00061         endc                                                                    ;final da memória do usu
+                            ário
+                      00062         
+                      00063 ; =============================================================================
+                      00064 ; --- Vetor de RESET ---
+0000                  00065         org                     H'0000'                                         ;Origem no endereço 00h 
+                            de memória
+0000   2805           00066         goto            inicio                                          ;Desvia para a label início
+                      00067         
+                      00068 
+                      00069 ; =============================================================================
+                      00070 ; --- Vetor de Interrupção ---
+0004                  00071         org                     H'0004'                                         ;As interrupções deste p
+                            rocessador apontam para este endereço
+0004   0009           00072         retfie                                                                  ;Retorna da interrupção
+                      00073         
+                      00074 ; wrkits.com.br/canal 
+                      00075 ; =============================================================================
+                      00076 ; --- Programa Principal ---
+0005                  00077 inicio:
+                      00078 
+0005   1683           00079         bank1                                                                   ;seleciona o banco 1 de 
+                            memória
+0006   300C           00080         movlw           H'0C'                                           ;w = 0Ch
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0007   0086           00081         movwf           TRISB                                           ;configura IOs no PORTB
+0008   1283           00082         bank0                                                                   ;seleciona o banco 0 de 
+                            memória
+0009   0186           00083         clrf            PORTB                                           ;limpa PORTB
+000A   2055           00084         call            _500ms                                          ;aguarda 500ms para estabilizar 
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                            VDD
+000B   2037           00085         call            lcd_init                                        ;inicializa LCD
+000C   0186           00086         clrf            PORTB                                           ;limpa PORTB
+                      00087 
+                      00088         
+                      00089 ; =============================================================================
+                      00090 ; --- Loop Infinito ---
+000D                  00091 loop:
+000D   3048           00092         movlw           'H'                                                     ;move byte de 'H' para w
+                            ork
+000E   2028           00093         call            lcd_write                                       ;escreve no LCD
+000F   2055           00094         call            _500ms                                          ;aguarda 500ms
+0010   3065           00095         movlw           'e'                                                     ;move byte de 'e' para w
+                            ork
+0011   2028           00096         call            lcd_write                                       ;escreve no LCD
+0012   2055           00097         call            _500ms                                          ;aguarda 500ms
+0013   306C           00098         movlw           'l'                                                     ;move byte de 'l' para w
+                            ork
+0014   2028           00099         call            lcd_write                                       ;escreve no LCD
+0015   2055           00100         call            _500ms                                          ;aguarda 500ms
+0016   306C           00101         movlw           'l'                                                     ;move byte de 'l' para w
+                            ork
+0017   2028           00102         call            lcd_write                                       ;escreve no LCD
+0018   2055           00103         call            _500ms                                          ;aguarda 500ms
+0019   306F           00104         movlw           'o'                                                     ;move byte de 'o' para w
+                            ork
+001A   2028           00105         call            lcd_write                                       ;escreve no LCD
+001B   2055           00106         call            _500ms                                          ;aguarda 500ms
+001C   3021           00107         movlw           '!'                                                     ;move byte de '!' para w
+                            ork
+001D   2028           00108         call            lcd_write                                       ;escreve no LCD
+001E   2055           00109         call            _500ms                                          ;aguarda 500ms
+001F   2045           00110     call                lcd_clear                                       ;limpa LCD
+0020   2055           00111     call                _500ms                                          ;aguarda 500ms
+                      00112 
+0021   280D           00113         goto            loop                                            ;desvia para loop
+                      00114         
+                      00115         
+                      00116 ; =============================================================================
+                      00117 ; --- Sub-Rotinas ---
+                      00118 
+                      00119 
+                      00120 ; =============================================================================
+                      00121 ; --- Envia comando para o LCD ---
+0022                  00122 lcd_cmd:
+0022   00A0           00123         movwf           cmd_st                                          ;armazena comando recebido
+0023   1006           00124         bcf                     rsel                                            ;limpa register select
+0024   0820           00125         movf            cmd_st,w                                        ;envia comando para work
+0025   0086           00126         movwf           PORTB                                           ;envia comando para LCD
+0026   204E           00127         call            pulse_en                                        ;pulso em enable
+0027   3400           00128         retlw           H'00'                                           ;retorna com work limpo
+                      00129         
+                      00130 
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00131 ; =============================================================================
+                      00132 ; --- Escreve um caractere no LCD ---   
+0028                  00133 lcd_write:
+0028   00A1           00134         movwf           char_st                                         ;carrega conteúdo de work para c
+                            har_st
+0029   0821           00135         movf            char_st,w                                       ;salva char_st em work
+002A   39F0           00136         andlw           H'F0'                                           ;w = w AND 11110000b, preserva n
+                            ibble mais significativo
+002B   0086           00137         movwf           PORTB                                           ;move conteúdo de work para PORT
+                            B
+002C   1406           00138         bsf                     rsel                                            ;seta rs
+002D   204E           00139         call            pulse_en                                        ;pulsa enable
+002E   0DA1           00140         rlf                     char_st,f                                       ;rotação para esquerda d
+                            e char_st, salva nele próprio
+002F   0DA1           00141         rlf                     char_st,f                                       ;rotação para esquerda d
+                            e char_st, salva nele próprio
+0030   0DA1           00142         rlf                     char_st,f                                       ;rotação para esquerda d
+                            e char_st, salva nele próprio
+0031   0D21           00143         rlf                     char_st,w                                       ;rotação para esquerda d
+                            e char_st, salva em work
+0032   39F0           00144         andlw           H'F0'                                           ;w = w AND 11110000b, preserva n
+                            ibble mais significativo
+0033   0086           00145         movwf           PORTB                                           ;move conteúdo de work para PORT
+                            B
+0034   1406           00146         bsf                     rsel                                            ;seta rs
+0035   204E           00147         call            pulse_en                                        ;pulsa enable
+0036   0008           00148         return                                                                  ;retorna
+                      00149 
+                      00150 
+                      00151 ; =============================================================================
+                      00152 ; --- Inicializa LCD ---
+0037                  00153 lcd_init:
+0037   3020           00154         movlw           H'20'                                           ;modo de 4 bits
+0038   2022           00155         call            lcd_cmd                                         ;envia comando
+0039   2022           00156         call            lcd_cmd                                         ;repete envio 3 vezes...
+003A   2022           00157         call            lcd_cmd                                         ;...para configurar 5x8 pontos p
+                            or caracter
+003B   3000           00158         movlw           H'00'                                           ;liga o display e o cursor 1/2 0
+                            h
+003C   2022           00159         call            lcd_cmd                                         ;envia comando
+003D   30E0           00160         movlw           H'E0'                                           ;liga o display e o cursor 2/2 E
+                            h
+003E   2022           00161         call            lcd_cmd                                         ;envia comando
+003F   3000           00162         movlw           H'00'                                           ;modo de incremento de endereço 
+                            para direita 1/2 0h
+0040   2022           00163         call            lcd_cmd                                         ;envia comando
+0041   3060           00164         movlw           H'60'                                           ;modo de incremento de endereço 
+                            para direita 2/2 6h
+0042   2022           00165         call            lcd_cmd                                         ;envia comando
+0043   2045           00166         call            lcd_clear                                       ;limpa LCD
+0044   0008           00167         return                                                                  ;retorna
+                      00168 
+                      00169 
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00170 ; =============================================================================
+                      00171 ; --- Limpa LCD ---
+0045                  00172 lcd_clear:
+0045   3000           00173         movlw           H'00'                                           ;return home display 1/2 0h
+0046   2022           00174         call            lcd_cmd                                         ;envia comando
+0047   3020           00175         movlw           H'20'                                           ;return display 2/2 1h
+0048   2022           00176         call            lcd_cmd                                         ;envia comando
+0049   3000           00177         movlw           H'00'                                           ;limpa display 1/2 0h
+004A   2022           00178         call            lcd_cmd                                         ;envia comando
+004B   3010           00179         movlw           H'10'                                           ;limpa display 2/2 1h
+004C   2022           00180         call            lcd_cmd                                         ;envia comando
+004D   3400           00181         retlw           H'00'                                           ;retorna com work em 00h
+                      00182         
+                      00183 
+                      00184 ; =============================================================================
+                      00185 ; --- pulsa o enable do LCD ---
+004E                  00186 pulse_en:
+004E   1486           00187         bsf                     enable                                          ;seta enable
+004F   2065           00188         call            _600us                                          ;aguarda 600µs
+0050   2065           00189         call            _600us                                          ;aguarda 600µs
+0051   1086           00190         bcf                     enable                                          ;limpa enable
+0052   2065           00191         call            _600us                                          ;aguarda 600µs
+0053   2065           00192         call            _600us                                          ;aguarda 600µs
+0054   0008           00193         return                                                                  ;retorna
+                      00194 
+                      00195 
+                      00196 ; =============================================================================
+                      00197 ; --- Delay de 500ms ---
+0055                  00198 _500ms:
+0055   30C8           00199         movlw           D'200'                                          ;move 200d para work
+0056   00A2           00200         movwf           time1                                           ;armazena na memória do usuário
+                      00201                                                                                         ;4 ciclos de máq
+                            uina (1 call + 2 mov's)
+0057                  00202 a500ms1:
+0057   30FA           00203         movlw           D'250'                                          ;move 250d para work
+0058   00A3           00204         movwf           time2                                           ;armazena na memória do usuário
+                      00205                                                                                         ;2 ciclos de máq
+                            uina (2 mov's)
+0059                  00206 a500ms2:
+0059   0000           00207         nop                                                                             ;no operation 
+005A   0000           00208         nop                                                                             ;no operation 
+005B   0000           00209         nop                                                                             ;no operation 
+005C   0000           00210         nop                                                                             ;no operation 
+005D   0000           00211         nop                                                                             ;no operation 
+005E   0000           00212         nop                                                                             ;no operation 
+005F   0000           00213         nop                                                                             ;no operation 
+                      00214                                                                                         ;7 ciclos de máq
+                            uina (7 nop's)
+                      00215 
+Message[305]: Using default destination of 1 (file).
+0060   0BA3           00216         decfsz          time2                                           ;decrementa time2 e desvia se fo
+                            r zero. Chegou em 0?
+0061   2859           00217         goto            a500ms2                                         ;não. Desvia para a500ms2
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00218                                                                                         ;3 ciclos de máq
+                            uina (1 dec + 1 goto)
+                      00219                                                                                         ;250 x 10 ciclos
+                             de máquina = 2500 ciclos
+                      00220 
+Message[305]: Using default destination of 1 (file).
+0062   0BA2           00221         decfsz          time1                                           ;decrementa time1 e desvia se fo
+                            r zero. Chegou em 0?
+0063   2857           00222         goto            a500ms1                                         ;não. Desvia para a500ms1
+                      00223                                                                                         ;3 ciclos de máq
+                            uina (1 dec + 1 goto)
+                      00224                                                                                         ;2500 x 200 = 50
+                            0000µs = 500ms
+0064   0008           00225         return                                                                  ;retorna
+                      00226         
+                      00227         
+                      00228 ; =============================================================================
+                      00229 ; --- Delay de 600µs ---
+0065                  00230 _600us:
+0065   30C8           00231         movlw           D'200'                                          ;move 200d para work
+0066   00A4           00232         movwf           time3                                           ;armazena na memória do usuário
+                      00233         
+0067                  00234 a600us:
+Message[305]: Using default destination of 1 (file).
+0067   0BA4           00235         decfsz          time3                                           ;decrementa time3 e desvia se fo
+                            r zero. Chegou em 0?
+0068   2867           00236         goto            a600us                                          ;não. Desvia para a600us
+                      00237                                                                                         ;3 x 200 = 600µs
+0069   0008           00238         return                                                                  ;retorna
+                      00239         
+                      00240 
+                      00241 ; =============================================================================
+                      00242 ; --- Final do Programa ---
+                      00243         end                                                                             ;Final do Progra
+                            ma
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  7
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ADDEN                             00000003
+ADEN                              00000003
+BRGH                              00000002
+C                                 00000000
+C1INV                             00000004
+C1OUT                             00000006
+C2INV                             00000005
+C2OUT                             00000007
+CCP1CON                           00000017
+CCP1IE                            00000002
+CCP1IF                            00000002
+CCP1M0                            00000000
+CCP1M1                            00000001
+CCP1M2                            00000002
+CCP1M3                            00000003
+CCP1X                             00000005
+CCP1Y                             00000004
+CCPR1                             00000015
+CCPR1H                            00000016
+CCPR1L                            00000015
+CIS                               00000003
+CM0                               00000000
+CM1                               00000001
+CM2                               00000002
+CMCON                             0000001F
+CMIE                              00000006
+CMIF                              00000006
+CREN                              00000004
+CSRC                              00000007
+DATA_CP_OFF                       00003FFF
+DATA_CP_ON                        00003EFF
+DC                                00000001
+EEADR                             0000009B
+EECON1                            0000009C
+EECON2                            0000009D
+EEDATA                            0000009A
+EEIE                              00000007
+EEIF                              00000007
+F                                 00000001
+FERR                              00000002
+FSR                               00000004
+GIE                               00000007
+INDF                              00000000
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTF                              00000001
+IRP                               00000007
+NOT_BO                            00000000
+NOT_BOD                           00000000
+NOT_BOR                           00000000
+NOT_PD                            00000003
+NOT_POR                           00000001
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  8
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+NOT_RBPU                          00000007
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+OERR                              00000001
+OPTION_REG                        00000081
+OSCF                              00000003
+PCL                               00000002
+PCLATH                            0000000A
+PCON                              0000008E
+PEIE                              00000006
+PIE1                              0000008C
+PIR1                              0000000C
+PORTA                             00000005
+PORTB                             00000006
+PR2                               00000092
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+RA0                               00000000
+RA1                               00000001
+RA2                               00000002
+RA3                               00000003
+RA4                               00000004
+RA5                               00000005
+RA6                               00000006
+RA7                               00000007
+RB0                               00000000
+RB1                               00000001
+RB2                               00000002
+RB3                               00000003
+RB4                               00000004
+RB5                               00000005
+RB6                               00000006
+RB7                               00000007
+RBIE                              00000003
+RBIF                              00000000
+RCIE                              00000005
+RCIF                              00000005
+RCREG                             0000001A
+RCSTA                             00000018
+RD                                00000000
+RP0                               00000005
+RP1                               00000006
+RX9                               00000006
+RX9D                              00000000
+SPBRG                             00000099
+SPEN                              00000007
+SREN                              00000005
+STATUS                            00000003
+SYNC                              00000004
+T0CS                              00000005
+T0IE                              00000005
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE  9
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+T0IF                              00000002
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000010
+T1OSCEN                           00000003
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             00000012
+TMR0                              00000001
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR1                              0000000E
+TMR1CS                            00000001
+TMR1H                             0000000F
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             0000000E
+TMR1ON                            00000000
+TMR2                              00000011
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TOUTPS0                           00000003
+TOUTPS1                           00000004
+TOUTPS2                           00000005
+TOUTPS3                           00000006
+TRISA                             00000085
+TRISA0                            00000000
+TRISA1                            00000001
+TRISA2                            00000002
+TRISA3                            00000003
+TRISA4                            00000004
+TRISA5                            00000005
+TRISA6                            00000006
+TRISA7                            00000007
+TRISB                             00000086
+TRISB0                            00000000
+TRISB1                            00000001
+TRISB2                            00000002
+TRISB3                            00000003
+TRISB4                            00000004
+TRISB5                            00000005
+TRISB6                            00000006
+TRISB7                            00000007
+TRMT                              00000001
+TX9                               00000006
+TX9D                              00000000
+TXEN                              00000005
+TXIE                              00000004
+TXIF                              00000004
+TXREG                             00000019
+TXSTA                             00000098
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE 10
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+VR0                               00000000
+VR1                               00000001
+VR2                               00000002
+VR3                               00000003
+VRCON                             0000009F
+VREN                              00000007
+VROE                              00000006
+VRR                               00000005
+W                                 00000000
+WR                                00000001
+WREN                              00000002
+WRERR                             00000003
+Z                                 00000002
+_500ms                            00000055
+_600us                            00000065
+_BODEN_OFF                        00003FBF
+_BODEN_ON                         00003FFF
+_BOREN_OFF                        00003FBF
+_BOREN_ON                         00003FFF
+_CONFIG                           00002007
+_CPD_OFF                          00003FFF
+_CPD_ON                           00003EFF
+_CP_OFF                           00003FFF
+_CP_ON                            00001FFF
+_DEVID1                           00002006
+_ER_OSC_CLKOUT                    00003FFF
+_ER_OSC_NOCLKOUT                  00003FFE
+_EXTCLK_OSC                       00003FEF
+_FOSC_ECIO                        00003FEF
+_FOSC_EXTRCCLK                    00003FFF
+_FOSC_EXTRCIO                     00003FFE
+_FOSC_HS                          00003FEE
+_FOSC_INTOSCCLK                   00003FFD
+_FOSC_INTOSCIO                    00003FFC
+_FOSC_LP                          00003FEC
+_FOSC_XT                          00003FED
+_HS_OSC                           00003FEE
+_IDLOC0                           00002000
+_IDLOC1                           00002001
+_IDLOC2                           00002002
+_IDLOC3                           00002003
+_INTOSC_OSC_CLKOUT                00003FFD
+_INTOSC_OSC_NOCLKOUT              00003FFC
+_INTRC_OSC_CLKOUT                 00003FFD
+_INTRC_OSC_NOCLKOUT               00003FFC
+_LP_OSC                           00003FEC
+_LVP_OFF                          00003F7F
+_LVP_ON                           00003FFF
+_MCLRE_OFF                        00003FDF
+_MCLRE_ON                         00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FF7
+_RC_OSC_CLKOUT                    00003FFF
+MPASM  5.51                      LCD4BITS.ASM   3-19-2021  22:35:31         PAGE 11
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_RC_OSC_NOCLKOUT                  00003FFE
+_WDTE_OFF                         00003FFB
+_WDTE_ON                          00003FFF
+_WDT_OFF                          00003FFB
+_WDT_ON                           00003FFF
+_XT_OSC                           00003FED
+__16F628A                         00000001
+__DEBUG                           1
+a500ms1                           00000057
+a500ms2                           00000059
+a600us                            00000067
+bank0                             bcf     STATUS,RP0
+bank1                             bsf     STATUS,RP0
+char_st                           00000021
+cmd_st                            00000020
+enable                            PORTB,1
+inicio                            00000005
+lcd_clear                         00000045
+lcd_cmd                           00000022
+lcd_init                          00000037
+lcd_write                         00000028
+loop                              0000000D
+pulse_en                          0000004E
+rsel                              PORTB,0
+time1                             00000022
+time2                             00000023
+time3                             00000024
+
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+0000 : X---XXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0040 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXX------ ----------------
+2000 : -------X-------- ---------------- ---------------- ----------------
+
+All other memory blocks unused.
+
+Program Memory Words Used:   103
+Program Memory Words Free:  1945
+
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     4 reported,     0 suppressed
+
+
